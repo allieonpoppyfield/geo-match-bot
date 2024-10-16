@@ -15,6 +15,9 @@ type Config struct {
 	PostgresHost  string
 	MemcacheHost  string
 	MemcachePort  string
+	RedisHost     string
+	RedisPort     string
+	KafkaBroker   string
 }
 
 func LoadConfig() *Config {
@@ -31,5 +34,8 @@ func LoadConfig() *Config {
 		PostgresHost:  os.Getenv("POSTGRES_HOST"),
 		MemcacheHost:  os.Getenv("MEMCACHE_HOST"),
 		MemcachePort:  os.Getenv("MEMCACHE_PORT"),
+		RedisHost:     os.Getenv("REDIS_HOST"),
+		RedisPort:     os.Getenv("REDIS_PORT"),
+		KafkaBroker:   os.Getenv("KAFKA_BROKER"),
 	}
 }

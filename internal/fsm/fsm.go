@@ -13,6 +13,12 @@ const (
 	StepPhoto  = "step_photo"
 )
 
+const (
+	StepSearchGender   = "step_search_gender"
+	StepSearchAge      = "step_search_age"
+	StepSearchLocation = "step_search_location"
+)
+
 type FSM struct {
 	cache *cache.MemcacheClient
 }
