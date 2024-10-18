@@ -75,6 +75,9 @@ func (h *UpdateHandler) HandleUnknownCommand(update tgbotapi.Update) {
 
 func (h *UpdateHandler) HandleStart(update tgbotapi.Update) {
 	telegramID := update.Message.Chat.ID
+	username := update.Message.From.UserName
+	firstName := update.Message.From.FirstName
+	lastName := update.Message.From.LastName
 
 	// Проверяем, существует ли профиль пользователя
 	user, err := h.userRepository.GetUserByTelegramID(telegramID)
@@ -84,18 +87,22 @@ func (h *UpdateHandler) HandleStart(update tgbotapi.Update) {
 		return
 	}
 
-	if user != nil {
-		// Если профиль существует, показываем главное меню
-		h.ShowMainMenu(telegramID)
+	if user == nil {
+		// Если пользователя нет, создаем новый профиль
+		err = h.userRepository.CreateUser(telegramID, username, firstName, lastName)
+		if err != nil {
+			log.Printf("Ошибка при создании профиля пользователя: %v", err)
+			h.bot.Send(tgbotapi.NewMessage(telegramID, "Не удалось создать ваш профиль. Попробуйте позже."))
+			return
+		}
+		// Начинаем процесс заполнения профиля с вопроса о поле
+		h.bot.Send(tgbotapi.NewMessage(telegramID, "Добро пожаловать! Укажите ваш пол (м/ж):"))
+		h.fsm.SetState(telegramID, fsm.StepGender) // Переход к шагу выбора пола
 		return
 	}
 
-	// Если профиля нет, начинаем процесс заполнения
-	msg := tgbotapi.NewMessage(telegramID, "Добро пожаловать! Укажите ваш пол (мужской/женский):")
-	h.bot.Send(msg)
-
-	// Устанавливаем начальный шаг
-	h.fsm.SetState(telegramID, fsm.StepGender)
+	// Если профиль уже существует, показываем главное меню
+	h.ShowMainMenu(telegramID)
 }
 
 // Обработка сообщений (ответов на вопросы)
@@ -297,6 +304,13 @@ func (h *UpdateHandler) ShowUserProfile(telegramID int64) {
 func (h *UpdateHandler) HandleCallbackQuery(callbackQuery *tgbotapi.CallbackQuery) {
 	telegramID := callbackQuery.Message.Chat.ID
 
+	if strings.HasPrefix(callbackQuery.Data, "connect_") {
+		// Извлекаем ID целевого пользователя
+		targetUserID := strings.TrimPrefix(callbackQuery.Data, "connect_")
+		h.SendProfileToUser(telegramID, targetUserID)
+		return
+	}
+
 	switch callbackQuery.Data {
 	case "profile":
 		h.ShowUserProfile(telegramID)
@@ -306,6 +320,8 @@ func (h *UpdateHandler) HandleCallbackQuery(callbackQuery *tgbotapi.CallbackQuer
 		h.ShowMainMenu(telegramID)
 	case "start_search": // Обработка кнопки "Начать поиск"
 		h.StartSearchProcess(telegramID)
+	case "search_next":
+		h.SearchNextUser(telegramID)
 	default:
 		h.bot.Send(tgbotapi.NewMessage(telegramID, "Неизвестная команда."))
 	}
@@ -316,17 +332,9 @@ func (h *UpdateHandler) StartSearchProcess(telegramID int64) {
 	msg := tgbotapi.NewMessage(telegramID, "Начинаем поиск...")
 	h.bot.Send(msg)
 
-	// Здесь будет логика взаимодействия с системой поиска (например, через Kafka)
-	// Для простоты можно пока симулировать поиск пользователей
-
-	// Пример симуляции поиска
-	users := []string{"Алексей, 25 лет", "Ольга, 30 лет", "Иван, 22 года"} // Пример пользователей
-	for _, user := range users {
-		h.bot.Send(tgbotapi.NewMessage(telegramID, fmt.Sprintf("Найден: %s", user)))
-	}
-
-	// По завершении возвращаем пользователя в главное меню
-	h.ShowMainMenu(telegramID)
+	// Запрашиваем у пользователя его местоположение (если не было запрошено ранее)
+	h.bot.Send(tgbotapi.NewMessage(telegramID, "Пожалуйста, отправьте свою геолокацию:"))
+	h.fsm.SetState(telegramID, fsm.StepSearchLocation)
 }
 
 func (h *UpdateHandler) StartSearch(update tgbotapi.Update) {
@@ -394,7 +402,7 @@ func (h *UpdateHandler) saveSearchLocation(update tgbotapi.Update) {
 
 func (h *UpdateHandler) StartKafkaSearch(telegramID int64, latitude, longitude float64) {
 	// Отправляем запрос на поиск через Kafka
-	err := h.kafkaProducer.Produce("search_requests", "user_search", fmt.Sprintf("%d,%f,%f", telegramID, latitude, longitude))
+	err := h.kafkaProducer.Produce("geo-match-search", "user_search", fmt.Sprintf("%d,%f,%f", telegramID, latitude, longitude))
 	if err != nil {
 		log.Printf("Error sending search request to Kafka: %v", err)
 		h.bot.Send(tgbotapi.NewMessage(telegramID, "Ошибка при запуске поиска. Попробуйте позже."))
@@ -402,4 +410,93 @@ func (h *UpdateHandler) StartKafkaSearch(telegramID int64, latitude, longitude f
 	}
 
 	h.bot.Send(tgbotapi.NewMessage(telegramID, "Начат поиск пользователей поблизости... Ожидайте результатов."))
+}
+
+func (h *UpdateHandler) ShowNearbyUser(telegramID int64, userID string) {
+	// Получаем данные пользователя по его внутреннему ID
+	user, err := h.userRepository.GetUserByID(userID)
+	if err != nil || user == nil {
+		h.bot.Send(tgbotapi.NewMessage(telegramID, "Ошибка при получении данных пользователя."))
+		return
+	}
+
+	// Формируем текст профиля
+	profileText := fmt.Sprintf("Имя: %s\nВозраст: %d\nПол: %s\nО себе: %s",
+		user.FirstName, user.Age, user.Gender, user.Bio)
+
+	msg := tgbotapi.NewMessage(telegramID, profileText)
+	h.bot.Send(msg)
+
+	// Получаем фото пользователя
+	photo, err := h.userRepository.GetUserPhotoByID(userID)
+	if err == nil && photo != "" {
+		photoMsg := tgbotapi.NewPhoto(telegramID, tgbotapi.FileID(photo))
+		h.bot.Send(photoMsg)
+	}
+
+	// Добавляем inline-кнопки "Предложить пообщаться" и "Искать дальше"
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Предложить пообщаться", fmt.Sprintf("connect_%s", userID)),
+			tgbotapi.NewInlineKeyboardButtonData("Искать дальше", "search_next"),
+		),
+	)
+
+	menuMsg := tgbotapi.NewMessage(telegramID, "Что вы хотите сделать?")
+	menuMsg.ReplyMarkup = keyboard
+	h.bot.Send(menuMsg)
+}
+
+func (h *UpdateHandler) SendProfileToUser(senderID int64, targetUserID string) {
+	// Получаем данные пользователя, который хочет пообщаться
+	senderProfile, err := h.userRepository.GetUserByTelegramID(senderID)
+	if err != nil || senderProfile == nil {
+		h.bot.Send(tgbotapi.NewMessage(senderID, "Ошибка при получении вашего профиля."))
+		return
+	}
+
+	// Формируем сообщение для целевого пользователя
+	profileText := fmt.Sprintf("Пользователь %s хочет с вами пообщаться:\nИмя: %s\nВозраст: %d\nПол: %s\nО себе: %s",
+		senderProfile.FirstName, senderProfile.FirstName, senderProfile.Age, senderProfile.Gender, senderProfile.Bio)
+
+	// Отправляем сообщение целевому пользователю
+	targetUserIDInt, _ := strconv.ParseInt(targetUserID, 10, 64)
+	msg := tgbotapi.NewMessage(targetUserIDInt, profileText)
+	h.bot.Send(msg)
+
+	// Кнопки для ответа
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Принять", fmt.Sprintf("accept_%d", senderID)),
+			tgbotapi.NewInlineKeyboardButtonData("Отказать", fmt.Sprintf("decline_%d", senderID)),
+		),
+	)
+
+	menuMsg := tgbotapi.NewMessage(targetUserIDInt, "Что вы хотите сделать?")
+	menuMsg.ReplyMarkup = keyboard
+	h.bot.Send(menuMsg)
+}
+
+func (h *UpdateHandler) SearchNextUser(telegramID int64) {
+	// Получаем текущую локацию пользователя
+	latitude, longitude, err := h.redisClient.GetUserLocation(telegramID)
+	if err != nil {
+		h.bot.Send(tgbotapi.NewMessage(telegramID, "Ошибка при получении вашей локации. Попробуйте позже."))
+		return
+	}
+
+	// Ищем пользователей поблизости в радиусе, скажем, 10 км
+	nearbyUsers, err := h.redisClient.FindNearbyUsers(telegramID, latitude, longitude, 10)
+	if err != nil {
+		h.bot.Send(tgbotapi.NewMessage(telegramID, "Ошибка при поиске пользователей. Попробуйте позже."))
+		return
+	}
+
+	if len(nearbyUsers) == 0 {
+		h.bot.Send(tgbotapi.NewMessage(telegramID, "Поблизости нет пользователей."))
+		return
+	}
+
+	// Показываем первого найденного пользователя
+	h.ShowNearbyUser(telegramID, nearbyUsers[0])
 }

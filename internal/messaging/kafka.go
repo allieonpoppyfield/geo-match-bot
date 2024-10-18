@@ -87,9 +87,9 @@ func (kc *KafkaConsumer) Subscribe(topic string) error {
 }
 
 func (kc *KafkaConsumer) HandleSearchRequests() {
-	err := kc.consumer.Subscribe("search_requests", nil)
+	err := kc.consumer.Subscribe("geo-match-search", nil)
 	if err != nil {
-		log.Fatalf("Error subscribing to search_requests: %v", err)
+		log.Fatalf("Error subscribing to geo-match-search: %v", err)
 	}
 
 	for {
@@ -106,7 +106,7 @@ func (kc *KafkaConsumer) HandleSearchRequests() {
 		longitude, _ := strconv.ParseFloat(parts[2], 64)
 
 		// Ищем пользователей в Redis через redisClient
-		nearbyUsers, err := kc.redisClient.FindNearbyUsers(latitude, longitude, 3.0) // Радиус поиска 3 км
+		nearbyUsers, err := kc.redisClient.FindNearbyUsers(telegramID, latitude, longitude, 3.0) // Радиус поиска 3 км
 		if err != nil {
 			log.Printf("Error finding nearby users: %v", err)
 			continue

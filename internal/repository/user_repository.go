@@ -211,3 +211,46 @@ func (r *UserRepository) GetUserPhoto(telegramID int64) (string, error) {
 
 	return photoURL, nil
 }
+
+func (r *UserRepository) GetUserByID(userID string) (*User, error) {
+	query := r.builder.Select("id", "telegram_id", "username", "first_name", "last_name", "gender", "age", "bio").
+		From("users").
+		Where(sq.Eq{"id": userID})
+
+	sqlQuery, args, err := query.ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("error building query: %v", err)
+	}
+
+	var user User
+	err = r.db.QueryRow(sqlQuery, args...).Scan(&user.ID, &user.TelegramID, &user.Username, &user.FirstName, &user.LastName, &user.Gender, &user.Age, &user.Bio)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+
+	return &user, nil
+}
+
+func (r *UserRepository) GetUserPhotoByID(userID string) (string, error) {
+	query := r.builder.Select("photo_url").
+		From("photos").
+		Where(sq.Eq{"user_id": userID}).
+		Limit(1)
+
+	sqlQuery, args, err := query.ToSql()
+	if err != nil {
+		return "", fmt.Errorf("error building query for photos: %v", err)
+	}
+
+	var photoURL string
+	err = r.db.QueryRow(sqlQuery, args...).Scan(&photoURL)
+	if err == sql.ErrNoRows {
+		return "", nil // Фото не найдено
+	} else if err != nil {
+		return "", err
+	}
+
+	return photoURL, nil
+}
