@@ -1,6 +1,6 @@
 module geo_match_bot
 
-go 1.22
+go 1.23
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
