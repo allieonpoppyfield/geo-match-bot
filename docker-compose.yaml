@@ -3,6 +3,7 @@ version: '3.8'
 services:
   # PostgreSQL для базы данных
   postgres:
+    container_name: postgres
     image: postgres:14
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -15,6 +16,7 @@ services:
 
   # Memcached для кэша
   memcached:
+    container_name: memcached
     image: memcached:alpine
     ports:
       - "11211:11211"
@@ -28,6 +30,7 @@ services:
 
   # Zookeeper для управления Kafka
   zookeeper:
+    container_name: zookeeper
     image: confluentinc/cp-zookeeper:latest
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
@@ -36,6 +39,7 @@ services:
 
   # Kafka для обработки сообщений
   kafka:
+    container_name: kafka
     image: confluentinc/cp-kafka:latest
     depends_on:
       - zookeeper
@@ -49,6 +53,7 @@ services:
 
   # Kafka Init: создание топика при старте
   kafka-init:
+    container_name: kafka-init
     image: confluentinc/cp-kafka
     depends_on:
       - kafka
@@ -58,7 +63,8 @@ services:
       kafka-topics --create --topic geo-match-search --bootstrap-server kafka:9092 --replication-factor 1 --partitions 1"
 
   # Приложение
-  app:
+  geo_match:
+    container_name: geo_match
     build: 
       context: .
       dockerfile: Dockerfile
@@ -73,7 +79,7 @@ services:
       MEMCACHE_PORT: 11211
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      KAFKA_BROKER: kafka:9092
+      KAFKA_BROKER: kafka
     depends_on:
       - postgres
       - memcached
