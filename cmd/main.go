@@ -42,14 +42,14 @@ func main() {
 		log.Fatalf("Failed to create Telegram Bot: %v", err)
 	}
 
+	// Создание репозитория пользователей
+	userRepo := repository.NewUserRepository(dbConn.Conn)
+
 	// Инициализация Kafka Consumer с Redis и Telegram ботом
-	kafkaConsumer, err := messaging.NewKafkaConsumer(cfg.KafkaBroker, "search_group", redisClient, telegramBot)
+	kafkaConsumer, err := messaging.NewKafkaConsumer(cfg.KafkaBroker, "search_group", redisClient, telegramBot, userRepo)
 	if err != nil {
 		log.Fatalf("Failed to initialize Kafka consumer: %v", err)
 	}
-
-	// Создание репозитория пользователей
-	userRepo := repository.NewUserRepository(dbConn.Conn)
 
 	// Инициализация хендлеров (обработчики команд и сообщений)
 	updateHandler := handlers.NewUpdateHandler(telegramBot, userRepo, memcacheClient, redisClient, kafkaProducer)

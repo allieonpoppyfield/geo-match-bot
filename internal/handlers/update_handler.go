@@ -461,6 +461,16 @@ func (h *UpdateHandler) SendProfileToUser(senderID int64, targetUserID string) {
 
 	// Отправляем сообщение целевому пользователю
 	targetUserIDInt, _ := strconv.ParseInt(targetUserID, 10, 64)
+
+	// Получаем фото отправителя из репозитория
+	photo, err := h.userRepository.GetUserPhoto(senderID)
+	if err == nil && photo != "" {
+		// Если фото найдено, отправляем его
+		photoMsg := tgbotapi.NewPhoto(targetUserIDInt, tgbotapi.FileID(photo))
+		h.bot.Send(photoMsg)
+	}
+
+	// Отправляем текст профиля
 	msg := tgbotapi.NewMessage(targetUserIDInt, profileText)
 	h.bot.Send(msg)
 

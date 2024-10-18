@@ -3,6 +3,7 @@ package messaging
 import (
 	"fmt"
 	"geo_match_bot/internal/cache"
+	"geo_match_bot/internal/repository"
 	"log"
 	"strconv"
 	"strings"
@@ -17,9 +18,10 @@ type KafkaProducer struct {
 }
 
 type KafkaConsumer struct {
-	consumer    *kafka.Consumer
-	redisClient *cache.RedisClient // Redis для поиска по геолокации
-	bot         *tgbotapi.BotAPI   // Telegram Bot для отправки сообщений
+	consumer       *kafka.Consumer
+	redisClient    *cache.RedisClient // Redis для поиска по геолокации
+	bot            *tgbotapi.BotAPI   // Telegram Bot для отправки сообщений
+	userRepository *repository.UserRepository
 }
 
 // NewKafkaProducer создает новый продюсер Kafka
@@ -51,7 +53,7 @@ func (kp *KafkaProducer) Produce(topic string, key string, value string) error {
 	return nil
 }
 
-func NewKafkaConsumer(broker, groupID string, redisClient *cache.RedisClient, bot *tgbotapi.BotAPI) (*KafkaConsumer, error) {
+func NewKafkaConsumer(broker, groupID string, redisClient *cache.RedisClient, bot *tgbotapi.BotAPI, userRepo *repository.UserRepository) (*KafkaConsumer, error) {
 	c, err := kafka.NewConsumer(&kafka.ConfigMap{
 		"bootstrap.servers": broker,
 		"group.id":          groupID,
@@ -63,9 +65,10 @@ func NewKafkaConsumer(broker, groupID string, redisClient *cache.RedisClient, bo
 	}
 
 	return &KafkaConsumer{
-		consumer:    c,
-		redisClient: redisClient,
-		bot:         bot, // Прокидываем Telegram бот
+		consumer:       c,
+		redisClient:    redisClient,
+		bot:            bot,
+		userRepository: userRepo, // Добавлено!
 	}, nil
 }
 
@@ -86,6 +89,7 @@ func (kc *KafkaConsumer) Subscribe(topic string) error {
 	}
 }
 
+// HandleSearchRequests обрабатывает поисковые запросы
 func (kc *KafkaConsumer) HandleSearchRequests() {
 	err := kc.consumer.Subscribe("geo-match-search", nil)
 	if err != nil {
@@ -117,6 +121,7 @@ func (kc *KafkaConsumer) HandleSearchRequests() {
 	}
 }
 
+// SendSearchResults отправляет результаты поиска пользователю
 func (kc *KafkaConsumer) SendSearchResults(telegramID int64, nearbyUsers []string) {
 	if len(nearbyUsers) == 0 {
 		// Если пользователей не найдено, отправляем уведомление
@@ -124,16 +129,48 @@ func (kc *KafkaConsumer) SendSearchResults(telegramID int64, nearbyUsers []strin
 		return
 	}
 
-	// Формируем сообщение с найденными пользователями
-	msgText := "Найдены следующие пользователи в вашем радиусе:\n"
-	for _, userID := range nearbyUsers {
-		msgText += fmt.Sprintf("Пользователь с ID: %s\n", userID) // Здесь можно расширить информацию о пользователе
+	// Для каждого найденного пользователя вызываем метод показа профиля
+	for _, nearbyUserID := range nearbyUsers {
+		kc.SendProfileToUser(telegramID, nearbyUserID)
+	}
+}
+
+// SendProfileToUser отправляет профиль найденного пользователя в бота
+func (kc *KafkaConsumer) SendProfileToUser(requesterTelegramID int64, targetUserID string) {
+	targetUserIDInt, err := strconv.Atoi(targetUserID)
+	if err != nil {
+		log.Println(err)
+	}
+	// Получаем данные пользователя через репозиторий (или кеш)
+	user, err := kc.userRepository.GetUserByTelegramID(int64(targetUserIDInt))
+	if err != nil || user == nil {
+		kc.bot.Send(tgbotapi.NewMessage(requesterTelegramID, "Ошибка при получении данных профиля пользователя."))
+		return
+	}
+	// Формируем текст профиля
+	profileText := fmt.Sprintf("Имя: %s\nВозраст: %d\nПол: %s\nО себе: %s",
+		user.FirstName, user.Age, user.Gender, user.Bio)
+
+	// Отправляем текст профиля
+	msg := tgbotapi.NewMessage(requesterTelegramID, profileText)
+	kc.bot.Send(msg)
+
+	// Получаем фото пользователя
+	photo, err := kc.userRepository.GetUserPhoto(int64(targetUserIDInt))
+	if err == nil && photo != "" {
+		photoMsg := tgbotapi.NewPhoto(requesterTelegramID, tgbotapi.FileID(photo))
+		kc.bot.Send(photoMsg)
 	}
 
-	// Отправляем сообщение пользователю
-	msg := tgbotapi.NewMessage(telegramID, msgText)
-	_, err := kc.bot.Send(msg)
-	if err != nil {
-		log.Printf("Error sending search results to user: %v", err)
-	}
+	// Добавляем inline-кнопки для взаимодействия
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Предложить пообщаться", fmt.Sprintf("connect_%s", targetUserID)),
+			tgbotapi.NewInlineKeyboardButtonData("Искать дальше", "search_next"),
+		),
+	)
+
+	menuMsg := tgbotapi.NewMessage(requesterTelegramID, "Что вы хотите сделать?")
+	menuMsg.ReplyMarkup = keyboard
+	kc.bot.Send(menuMsg)
 }
