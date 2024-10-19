@@ -14,9 +14,10 @@ const (
 )
 
 const (
-	StepSearchGender   = "step_search_gender"
-	StepSearchAge      = "step_search_age"
-	StepSearchLocation = "step_search_location"
+	StepSearchGender             = "step_search_gender"
+	StepSearchAge                = "step_search_age"
+	StepSearchLocation           = "step_search_location"
+	StepSetLocationForVisibility = "step_set_location_for_visibility"
 )
 
 type FSM struct {

@@ -23,6 +23,36 @@ func (h *UpdateHandler) HandleMessage(update tgbotapi.Update) {
 		return
 	}
 
+	// Обработка состояния установки геолокации для видимости
+	if currentState == fsm.StepSetLocationForVisibility {
+		if update.Message.Location == nil {
+			h.bot.Send(tgbotapi.NewMessage(telegramID, "Пожалуйста, отправьте корректную геолокацию."))
+			return
+		}
+
+		latitude := update.Message.Location.Latitude
+		longitude := update.Message.Location.Longitude
+
+		// Сохраняем локацию пользователя в Redis и включаем видимость
+		err := h.redisClient.AddUserLocation(telegramID, latitude, longitude)
+		if err != nil {
+			log.Printf("Error saving user location in Redis: %v", err)
+			h.bot.Send(tgbotapi.NewMessage(telegramID, "Ошибка при сохранении локации. Попробуйте позже."))
+			return
+		}
+
+		// Добавляем пользователя в Kafka
+		h.kafkaProducer.Produce("geo-match-search", "user_visibility", fmt.Sprintf("%d,%f,%f", telegramID, latitude, longitude))
+
+		// Устанавливаем видимость в кэше
+		h.cache.Set(fmt.Sprintf("visibility:%d", telegramID), "true")
+
+		// Завершаем установку и очищаем состояние FSM
+		h.fsm.ClearState(telegramID)
+		h.bot.Send(tgbotapi.NewMessage(telegramID, "Видимость включена. Теперь вы доступны для поиска."))
+		return
+	}
+
 	if update.Message.Text == "Завершить общение" {
 		chatPartner, innerErr := h.cache.Get(fmt.Sprintf("chat:%d", telegramID))
 		if innerErr == nil && chatPartner != "" {
@@ -186,6 +216,7 @@ func (h *UpdateHandler) savePhoto(update tgbotapi.Update) {
 	// Завершаем процесс создания профиля
 	h.bot.Send(tgbotapi.NewMessage(telegramID, "Ваш профиль успешно создан и отправлен на проверку."))
 	h.fsm.ClearState(telegramID)
+	h.ShowMainMenu(telegramID)
 }
 
 func (h *UpdateHandler) saveSearchGender(update tgbotapi.Update) {

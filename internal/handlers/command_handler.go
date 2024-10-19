@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"geo_match_bot/internal/fsm"
 	"log"
 
@@ -50,6 +51,9 @@ func (h *UpdateHandler) HandleStart(update tgbotapi.Update) {
 			h.bot.Send(tgbotapi.NewMessage(telegramID, "Не удалось создать ваш профиль. Попробуйте позже."))
 			return
 		}
+		// Устанавливаем пользователя как невидимого по умолчанию
+		h.cache.Set(fmt.Sprintf("visibility:%d", telegramID), "false")
+
 		// Начинаем процесс заполнения профиля с вопроса о поле
 		h.bot.Send(tgbotapi.NewMessage(telegramID, "Добро пожаловать! Укажите ваш пол (м/ж):"))
 		h.fsm.SetState(telegramID, fsm.StepGender) // Переход к шагу выбора пола

@@ -6,6 +6,7 @@ import (
 	"geo_match_bot/internal/fsm"
 	"geo_match_bot/internal/messaging"
 	"geo_match_bot/internal/repository"
+	"log"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -55,13 +56,29 @@ func (h *UpdateHandler) HandleUpdate(update tgbotapi.Update) {
 }
 
 func (h *UpdateHandler) ShowMainMenu(telegramID int64) {
+	// Получаем текущий статус видимости пользователя
+	visibility, err := h.cache.Get(fmt.Sprintf("visibility:%d", telegramID))
+	if err != nil {
+		h.bot.Send(tgbotapi.NewMessage(telegramID, "Ошибка при получении статуса видимости. Попробуйте позже."))
+		return
+	}
+
+	// Определяем текст кнопки на основе текущего статуса
+	visibilityText := "Видимость: Включена"
+	if visibility == "" || visibility == "false" {
+		visibilityText = "Видимость: Отключена"
+	}
+
 	msg := tgbotapi.NewMessage(telegramID, "Главное меню")
 
-	// Создаем inline-кнопки "Профиль" и "Начать поиск"
+	// Создаем inline-кнопки "Профиль", "Начать поиск" и "Видимость"
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("Профиль", "profile"),
 			tgbotapi.NewInlineKeyboardButtonData("Начать поиск", "start_search"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(visibilityText, "toggle_visibility"),
 		),
 	)
 	msg.ReplyMarkup = keyboard
@@ -105,4 +122,72 @@ func (h *UpdateHandler) ShowUserProfile(telegramID int64) {
 	menuMsg.ReplyMarkup = keyboard
 
 	h.bot.Send(menuMsg)
+}
+
+func (h *UpdateHandler) ToggleVisibility(update tgbotapi.Update, telegramID int64, currentVisibility string) {
+	newVisibility := "true"
+	if currentVisibility == "true" {
+		newVisibility = "false"
+	}
+
+	// Обновляем статус видимости в кэше
+	h.cache.Set(fmt.Sprintf("visibility:%d", telegramID), newVisibility)
+
+	// Обновляем данные в Redis и Kafka в зависимости от нового статуса
+	if newVisibility == "true" {
+		// Проверяем, есть ли геолокация пользователя
+		latitude, longitude, err := h.redisClient.GetUserLocation(telegramID)
+		if err != nil || latitude == 0 || longitude == 0 {
+			// Если геолокации нет или она некорректна, запрашиваем у пользователя
+			h.bot.Send(tgbotapi.NewMessage(telegramID, "Включение видимости требует указания геолокации. Пожалуйста, отправьте свою геопозицию."))
+			h.fsm.SetState(telegramID, fsm.StepSetLocationForVisibility) // Состояние для получения геолокации
+			return
+		}
+
+		// Добавляем пользователя в Redis и Kafka
+		h.redisClient.AddUserLocation(telegramID, latitude, longitude)
+		h.kafkaProducer.Produce("geo-match-search", "user_visibility", fmt.Sprintf("%d,%f,%f", telegramID, latitude, longitude))
+	} else {
+		// Удаляем пользователя из Redis и Kafka
+		h.redisClient.RemoveUserLocation(telegramID)
+		h.kafkaProducer.Produce("geo-match-search", "user_remove", fmt.Sprintf("%d", telegramID))
+	}
+
+	// Обновляем кнопки в главном меню
+	visibilityText := "Включена"
+	if newVisibility == "false" {
+		visibilityText = "Выключена"
+	}
+	msg := tgbotapi.NewMessage(telegramID, fmt.Sprintf("Видимость: %s", visibilityText))
+	h.ShowMainMenu(telegramID) // Переносим пользователя в главное меню
+	h.bot.Send(msg)
+}
+
+func (h *UpdateHandler) saveLocationForVisibility(update tgbotapi.Update) {
+	telegramID := update.Message.Chat.ID
+
+	if update.Message.Location == nil {
+		h.bot.Send(tgbotapi.NewMessage(telegramID, "Пожалуйста, отправьте корректную геолокацию."))
+		return
+	}
+
+	latitude := update.Message.Location.Latitude
+	longitude := update.Message.Location.Longitude
+
+	// Сохраняем локацию пользователя в Redis
+	err := h.redisClient.AddUserLocation(telegramID, latitude, longitude)
+	if err != nil {
+		log.Printf("Error saving user location in Redis: %v", err)
+		h.bot.Send(tgbotapi.NewMessage(telegramID, "Ошибка при сохранении локации. Попробуйте позже."))
+		return
+	}
+
+	// Устанавливаем пользователя как видимого
+	h.cache.Set(fmt.Sprintf("visibility:%d", telegramID), "true")
+	h.kafkaProducer.Produce("geo-match-search", "user_visibility", fmt.Sprintf("%d,%f,%f", telegramID, latitude, longitude))
+
+	// Сообщаем пользователю об успешном включении видимости и возвращаем в главное меню
+	h.bot.Send(tgbotapi.NewMessage(telegramID, "Видимость успешно включена."))
+	h.ShowMainMenu(telegramID)
+	h.fsm.ClearState(telegramID)
 }

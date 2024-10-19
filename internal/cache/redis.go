@@ -69,3 +69,9 @@ func (r *RedisClient) GetUserLocation(telegramID int64) (float64, float64, error
 
 	return location[0].Latitude, location[0].Longitude, nil
 }
+
+func (r *RedisClient) RemoveUserLocation(userID int64) error {
+	// Удаляем пользователя из GeoSet
+	_, err := r.client.ZRem(r.ctx, "user_locations", strconv.FormatInt(userID, 10)).Result()
+	return err
+}
