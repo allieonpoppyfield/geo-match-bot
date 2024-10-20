@@ -55,8 +55,13 @@ func (h *UpdateHandler) HandleStart(update tgbotapi.Update) {
 		h.cache.Set(fmt.Sprintf("visibility:%d", telegramID), "false")
 
 		// Начинаем процесс заполнения профиля с вопроса о поле
-		h.bot.Send(tgbotapi.NewMessage(telegramID, "Добро пожаловать! Укажите ваш пол (м/ж):"))
-		h.fsm.SetState(telegramID, fsm.StepGender) // Переход к шагу выбора пола
+		// h.bot.Send(tgbotapi.NewMessage(telegramID, "Добро пожаловать! Укажите ваш пол (м/ж):"))
+		// h.fsm.SetState(telegramID, fsm.StepGender) // Переход к шагу выбора пола
+		// return
+
+		// Начинаем процесс заполнения профиля с вопросаоб имени
+		h.bot.Send(tgbotapi.NewMessage(telegramID, "Добро пожаловать! Как вас зовут?"))
+		h.fsm.SetState(telegramID, fsm.StepTitleName) // Переход к шагу выбора пола
 		return
 	}
 

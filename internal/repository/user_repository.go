@@ -90,6 +90,24 @@ func (r *UserRepository) UpdateUserGender(telegramID int64, gender string) error
 	return nil
 }
 
+// Метод для обновления имени (внутреннего) пользователя
+func (r *UserRepository) UpdateUserTitleName(telegramID int64, titleName string) error {
+	query := r.builder.Update("users").
+		Set("title_name", titleName).
+		Where(sq.Eq{"telegram_id": telegramID})
+
+	sqlQuery, args, err := query.ToSql()
+	if err != nil {
+		return fmt.Errorf("error building query: %v", err)
+	}
+
+	_, err = r.db.Exec(sqlQuery, args...)
+	if err != nil {
+		return fmt.Errorf("error executing query: %v", err)
+	}
+	return nil
+}
+
 // Метод для обновления возраста пользователя
 func (r *UserRepository) UpdateUserAge(telegramID int64, age int) error {
 	query := r.builder.Update("users").

@@ -85,6 +85,8 @@ func (h *UpdateHandler) HandleMessage(update tgbotapi.Update) {
 	}
 
 	switch currentState {
+	case fsm.StepTitleName:
+		h.saveTitleName(update)
 	case fsm.StepGender:
 		h.saveGender(update)
 	case fsm.StepAge:
@@ -101,6 +103,36 @@ func (h *UpdateHandler) HandleMessage(update tgbotapi.Update) {
 		h.saveSearchLocation(update)
 	default:
 		h.bot.Send(tgbotapi.NewMessage(telegramID, "Пожалуйста, начните с команды /start."))
+	}
+}
+
+func (h *UpdateHandler) saveTitleName(update tgbotapi.Update) {
+	telegramID := update.Message.Chat.ID
+	titleName := update.Message.Text
+
+	// Проверяем, что гендер либо "м" (мужской), либо "ж" (женский)
+	if len(titleName) > 50 {
+		h.bot.Send(tgbotapi.NewMessage(telegramID, "Пожалуйста, введите корректное имя. Вы прислали слишком много символов."))
+		return
+	}
+
+	// Сохраняем пол в профиле пользователя
+	err := h.userRepository.UpdateUserTitleName(telegramID, titleName)
+	if err != nil {
+		log.Printf("Error updating gender: %v", err)
+		h.bot.Send(tgbotapi.NewMessage(telegramID, "Произошла ошибка при сохранении пола. Попробуйте еще раз."))
+		return
+	}
+
+	// Переходим на следующий шаг
+	nextState, err := h.fsm.NextStep(telegramID)
+	if err != nil {
+		log.Printf("Error transitioning to next state: %v", err)
+		return
+	}
+
+	if nextState == fsm.StepGender {
+		h.bot.Send(tgbotapi.NewMessage(telegramID, "Укажите ваш пол (м/ж):"))
 	}
 }
 

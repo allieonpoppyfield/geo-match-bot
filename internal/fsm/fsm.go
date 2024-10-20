@@ -7,10 +7,11 @@ import (
 
 // Определяем состояния
 const (
-	StepGender = "step_gender"
-	StepAge    = "step_age"
-	StepBio    = "step_bio"
-	StepPhoto  = "step_photo"
+	StepTitleName = "step_title_name"
+	StepGender    = "step_gender"
+	StepAge       = "step_age"
+	StepBio       = "step_bio"
+	StepPhoto     = "step_photo"
 )
 
 const (
@@ -53,6 +54,8 @@ func (fsm *FSM) NextStep(userID int64) (string, error) {
 
 	var nextState string
 	switch currentState {
+	case StepTitleName:
+		nextState = StepGender
 	case StepGender:
 		nextState = StepAge
 	case StepAge:
