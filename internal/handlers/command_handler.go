@@ -164,7 +164,7 @@ func (h *UpdateHandler) HandleToogleVisibility(update tgbotapi.Update) {
 		h.bot.Send(tgbotapi.NewMessage(telegramID, fmt.Sprintf("Ошибка при получении статуса видимости. Попробуйте позже. %s", err.Error())))
 		return
 	}
-
+	//
 	h.cache.Set(fmt.Sprintf("visibility:%d", telegramID), strconv.FormatBool(!visible))
 	var txt string
 	if visible {
