@@ -56,72 +56,15 @@ func (h *UpdateHandler) HandleUpdate(update tgbotapi.Update) {
 }
 
 func (h *UpdateHandler) ShowMainMenu(telegramID int64) {
-	// Получаем текущий статус видимости пользователя
-	visibility, err := h.cache.Get(fmt.Sprintf("visibility:%d", telegramID))
+	commands, txt := fsm.GetCommandsInstance().MainMenu()
+	// Отправляем команды боту
+	_, err := h.bot.Request(tgbotapi.NewSetMyCommands(commands...))
 	if err != nil {
-		h.bot.Send(tgbotapi.NewMessage(telegramID, "Ошибка при получении статуса видимости. Попробуйте позже."))
-		return
+		log.Panic(err)
 	}
-
-	// Определяем текст кнопки на основе текущего статуса
-	visibilityText := "Видимость: Включена"
-	if visibility == "" || visibility == "false" {
-		visibilityText = "Видимость: Отключена"
-	}
-
-	msg := tgbotapi.NewMessage(telegramID, "Главное меню")
-
-	// Создаем inline-кнопки "Профиль", "Начать поиск" и "Видимость"
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Профиль", "profile"),
-			tgbotapi.NewInlineKeyboardButtonData("Начать поиск", "start_search"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(visibilityText, "toggle_visibility"),
-		),
-	)
-	msg.ReplyMarkup = keyboard
-
+	msg := tgbotapi.NewMessage(telegramID, txt)
+	msg.ParseMode = "HTML"
 	h.bot.Send(msg)
-}
-
-func (h *UpdateHandler) ShowUserProfile(telegramID int64) {
-	// Получаем данные пользователя
-	user, err := h.userRepository.GetUserByTelegramID(telegramID)
-	if err != nil || user == nil {
-		h.bot.Send(tgbotapi.NewMessage(telegramID, "Ошибка при получении данных профиля."))
-		return
-	}
-
-	// Формируем сообщение с информацией о пользователе
-	profileText := fmt.Sprintf("Ваш профиль:\nИмя: %s\nВозраст: %d\nПол: %s\nО себе: %s",
-		user.FirstName, user.Age, user.Gender, user.Bio)
-
-	msg := tgbotapi.NewMessage(telegramID, profileText)
-
-	// Отправляем текст профиля
-	h.bot.Send(msg)
-
-	// Получаем фото пользователя из таблицы photos
-	photo, err := h.userRepository.GetUserPhoto(telegramID)
-	if err == nil && photo != "" {
-		// Если фото найдено, отправляем его
-		photoMsg := tgbotapi.NewPhoto(telegramID, tgbotapi.FileID(photo))
-		h.bot.Send(photoMsg)
-	}
-
-	// Добавляем inline-кнопки "Редактировать профиль" и "Назад"
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Редактировать профиль", "edit_profile"),
-			tgbotapi.NewInlineKeyboardButtonData("Назад", "back_to_menu"),
-		),
-	)
-	menuMsg := tgbotapi.NewMessage(telegramID, "Что вы хотите сделать дальше?")
-	menuMsg.ReplyMarkup = keyboard
-
-	h.bot.Send(menuMsg)
 }
 
 func (h *UpdateHandler) ToggleVisibility(update tgbotapi.Update, telegramID int64, currentVisibility string) {

@@ -9,6 +9,7 @@ import (
 
 type User struct {
 	ID         int
+	TitleName  string
 	TelegramID int64
 	Username   string
 	FirstName  string
@@ -33,7 +34,7 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 
 // Метод для поиска пользователя по telegram_id
 func (r *UserRepository) GetUserByTelegramID(telegramID int64) (*User, error) {
-	query := r.builder.Select("id", "telegram_id", "username", "first_name", "last_name", "gender", "age", "bio").
+	query := r.builder.Select("id", "title_name", "telegram_id", "username", "first_name", "last_name", "gender", "age", "bio").
 		From("users").
 		Where(sq.Eq{"telegram_id": telegramID})
 
@@ -43,7 +44,7 @@ func (r *UserRepository) GetUserByTelegramID(telegramID int64) (*User, error) {
 	}
 
 	var user User
-	err = r.db.QueryRow(sqlQuery, args...).Scan(&user.ID, &user.TelegramID, &user.Username, &user.FirstName, &user.LastName, &user.Gender, &user.Age, &user.Bio)
+	err = r.db.QueryRow(sqlQuery, args...).Scan(&user.ID, &user.TitleName, &user.TelegramID, &user.Username, &user.FirstName, &user.LastName, &user.Gender, &user.Age, &user.Bio)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	} else if err != nil {

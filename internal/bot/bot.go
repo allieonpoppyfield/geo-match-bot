@@ -12,19 +12,6 @@ func NewBot(token string) (*tgbotapi.BotAPI, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Настраиваем команды для меню
-	commands := []tgbotapi.BotCommand{
-		{Command: "start", Description: "Начало работы с ботом"},
-		{Command: "profile", Description: "Просмотр профиля"},
-		{Command: "visibility", Description: "Переключить видимость профиля"},
-		{Command: "help", Description: "Получить справку"},
-	}
-
-	// Отправляем команды боту
-	_, err = bot.Request(tgbotapi.NewSetMyCommands(commands...))
-	if err != nil {
-		log.Panic(err)
-	}
 
 	bot.Debug = true
 	log.Printf("Authorized on account %s", bot.Self.UserName)

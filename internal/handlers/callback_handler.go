@@ -71,8 +71,6 @@ func (h *UpdateHandler) HandleCallbackQuery(callbackQuery *tgbotapi.CallbackQuer
 
 	// Стандартные действия для других кнопок
 	switch callbackQuery.Data {
-	case "profile":
-		h.ShowUserProfile(telegramID)
 	case "edit_profile":
 		h.bot.Send(tgbotapi.NewMessage(telegramID, "Функция редактирования профиля пока не реализована."))
 	case "back_to_menu":

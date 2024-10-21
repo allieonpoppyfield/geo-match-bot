@@ -12,7 +12,7 @@ import (
 
 type MessageHandler interface {
 	HandleMessage(update tgbotapi.Update)
-}
+} 
 
 // Обработка сообщений (ответов на вопросы)
 func (h *UpdateHandler) HandleMessage(update tgbotapi.Update) {
