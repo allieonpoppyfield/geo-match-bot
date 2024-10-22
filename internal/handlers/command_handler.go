@@ -28,8 +28,12 @@ func (h *UpdateHandler) HandleCommand(update tgbotapi.Update) {
 		h.ShowMainMenu(update.Message.Chat.ID)
 	case "current_visibility":
 		h.HandleCurrentVisibility(update)
-	case "toogle_visibility":
+	case "toggle_visibility":
 		h.HandleToogleVisibility(update)
+	case "edit_profile":
+		h.bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "Введите ваше имя:"))
+		h.fsm.SetState(update.Message.Chat.ID, fsm.StepTitleName) // Переход к шагу заполнения имени
+		return
 	default:
 		h.HandleUnknownCommand(update)
 	}
@@ -119,8 +123,10 @@ func (h *UpdateHandler) HandleCurrentVisibility(update tgbotapi.Update) {
 	telegramID := update.Message.Chat.ID
 	// Получаем текущий статус видимости пользователя
 	currentVisibilityStr, err := h.cache.Get(fmt.Sprintf("visibility:%d", telegramID))
+	h.bot.Send(tgbotapi.NewMessage(telegramID, fmt.Sprintf("%d, %s", 122, currentVisibilityStr)))
 	if err != nil {
 		if err == memcache.ErrCacheMiss {
+			h.bot.Send(tgbotapi.NewMessage(telegramID, fmt.Sprintf("%d, %s", 125, err.Error())))
 			h.cache.Set(fmt.Sprintf("visibility:%d", telegramID), "false")
 			currentVisibilityStr = "false"
 		} else {
@@ -133,13 +139,15 @@ func (h *UpdateHandler) HandleCurrentVisibility(update tgbotapi.Update) {
 		h.bot.Send(tgbotapi.NewMessage(telegramID, fmt.Sprintf("Ошибка при получении статуса видимости. Попробуйте позже. %s", err.Error())))
 		return
 	}
+	h.bot.Send(tgbotapi.NewMessage(telegramID, fmt.Sprintf("%d, %t", 138, visible)))
+
 	txt := ""
-	if visible {
+	if !visible {
 		txt = `Сейчас видимость вашего профиля <b>отключена</b>, он не будет отображаться в поиске.`
 	} else {
 		txt = `Сейчас видимость вашего профиля <b>включена</b>, он будет отображаться в поиске.`
 	}
-	txt += "\nДля переключения видимости используйте команду /toogle_visibility"
+	txt += "\nДля переключения видимости используйте команду /toggle_visibility"
 	msg := tgbotapi.NewMessage(telegramID, txt)
 	msg.ParseMode = "HTML"
 	h.bot.Send(msg)
@@ -148,6 +156,7 @@ func (h *UpdateHandler) HandleCurrentVisibility(update tgbotapi.Update) {
 // TODO: НАДО ЗАПРАШИВАТЬ ЛОКАЦИЮ ПРИ ВКЛЮЧЕНИИ
 func (h *UpdateHandler) HandleToogleVisibility(update tgbotapi.Update) {
 	telegramID := update.Message.Chat.ID
+	// Получаем текущий статус видимости пользователя
 	// Получаем текущий статус видимости пользователя
 	currentVisibilityStr, err := h.cache.Get(fmt.Sprintf("visibility:%d", telegramID))
 	if err != nil {
@@ -164,18 +173,20 @@ func (h *UpdateHandler) HandleToogleVisibility(update tgbotapi.Update) {
 		h.bot.Send(tgbotapi.NewMessage(telegramID, fmt.Sprintf("Ошибка при получении статуса видимости. Попробуйте позже. %s", err.Error())))
 		return
 	}
-	//
-	h.cache.Set(fmt.Sprintf("visibility:%d", telegramID), strconv.FormatBool(!visible))
-	var txt string
-	if visible {
-		txt = `Вы <b>отключили</b> видимость, ваш профиль не отображается в поиске.`
+	currentVisibility := !visible
+
+	if currentVisibility {
+		h.bot.Send(tgbotapi.NewMessage(telegramID, "Пожалуйста, отправьте свою геолокацию для включения видимости."))
+		h.fsm.SetState(telegramID, fsm.StepSetLocationForVisibility)
 	} else {
-		txt = `Вы <b>включили</b> видимость, ваш профиль отображается в поиске.`
+		txt := `Вы <b>отключили</b> видимость, ваш профиль не отображается в поиске.`
+		go h.redisClient.RemoveUserLocation(telegramID)
+		go h.kafkaProducer.Produce("geo-match-search", "user_remove", fmt.Sprintf("%d", telegramID))
+		go h.cache.Set(fmt.Sprintf("visibility:%d", telegramID), "false")
+		msg := tgbotapi.NewMessage(telegramID, txt)
+		msg.ParseMode = "HTML"
+		h.bot.Send(msg)
 	}
-	txt += "\nДля переключения видимости используйте команду <b>/toogle_visibility</b>"
-	msg := tgbotapi.NewMessage(telegramID, txt)
-	msg.ParseMode = "HTML"
-	h.bot.Send(msg)
 }
 
 func formatGender(gender string) string {

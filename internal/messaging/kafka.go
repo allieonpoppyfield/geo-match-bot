@@ -95,7 +95,7 @@ func (kc *KafkaConsumer) HandleSearchRequests() {
 	if err != nil {
 		log.Fatalf("Error subscribing to geo-match-search: %v", err)
 	}
-
+	return
 	for {
 		msg, err := kc.consumer.ReadMessage(-1)
 		if err != nil {

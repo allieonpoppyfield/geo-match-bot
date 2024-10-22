@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"fmt"
-	"geo_match_bot/internal/fsm"
 	"strconv"
 	"strings"
 
@@ -15,34 +13,6 @@ type CallbackHandler interface {
 
 func (h *UpdateHandler) HandleCallbackQuery(callbackQuery *tgbotapi.CallbackQuery) {
 	telegramID := callbackQuery.Message.Chat.ID
-
-	if callbackQuery.Data == "toggle_visibility" {
-		// Получаем текущий статус видимости пользователя
-		currentVisibility, err := h.cache.Get(fmt.Sprintf("visibility:%d", telegramID))
-		if err != nil || currentVisibility == "" {
-			h.bot.Send(tgbotapi.NewMessage(telegramID, "Ошибка при получении статуса видимости. Попробуйте позже."))
-			return
-		}
-
-		// Определяем новое значение видимости
-		newVisibility := "true"
-		if currentVisibility == "true" {
-			newVisibility = "false"
-		}
-
-		// Если видимость включается, запрашиваем локацию
-		if newVisibility == "true" {
-			h.bot.Send(tgbotapi.NewMessage(telegramID, "Пожалуйста, отправьте свою геолокацию для включения видимости."))
-			h.fsm.SetState(telegramID, fsm.StepSetLocationForVisibility)
-		} else {
-			// Если видимость отключается, обновляем Redis и Kafka
-			h.redisClient.RemoveUserLocation(telegramID)
-			h.kafkaProducer.Produce("geo-match-search", "user_remove", fmt.Sprintf("%d", telegramID))
-			h.cache.Set(fmt.Sprintf("visibility:%d", telegramID), newVisibility)
-			h.bot.Send(tgbotapi.NewMessage(telegramID, "Видимость выключена."))
-		}
-		return
-	}
 
 	// Проверяем нажатие кнопки на предложение общения
 	if strings.HasPrefix(callbackQuery.Data, "connect_") {

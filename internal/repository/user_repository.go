@@ -173,7 +173,8 @@ func (r *UserRepository) GetUserIDByTelegramID(telegramID int64) (int, error) {
 func (r *UserRepository) AddPhotoForUser(userID int, fileID string) error {
 	query := r.builder.Insert("photos").
 		Columns("user_id", "photo_url", "is_verified").
-		Values(userID, fileID, false) // По умолчанию фото не верифицировано
+		Values(userID, fileID, false).
+		Suffix("ON CONFLICT (user_id) DO UPDATE SET photo_url = EXCLUDED.photo_url, is_verified = EXCLUDED.is_verified")
 
 	sqlQuery, args, err := query.ToSql()
 	if err != nil {
