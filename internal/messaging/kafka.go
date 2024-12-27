@@ -68,7 +68,7 @@ func NewKafkaConsumer(broker, groupID string, redisClient *cache.RedisClient, bo
 		consumer:       c,
 		redisClient:    redisClient,
 		bot:            bot,
-		userRepository: userRepo, // Добавлено!
+		userRepository: userRepo, 
 	}, nil
 }
 
